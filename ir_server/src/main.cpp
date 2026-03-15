@@ -258,6 +258,113 @@ void handleIRSendAPI()
     led.show();
 }
 
+// POST /ir/send_raw
+void handleIRSendRawAPI()
+{
+    Serial.println("access POST /ir/send_raw");
+
+    // 処理中を色で表示
+    led.setPixelColor(0, LED_COLOR_YELLOW);
+    led.show();
+
+    JsonDocument resDoc;       // レスポンスのJSON
+    JsonDocument reqDoc;       // リクエストのJSON
+    char resBodyBuf[1024 * 2]; // レスポンスのバッファ
+
+    // リクエストボディのJSONデシリアライズ
+    String requestBody = server.arg("plain");
+    Serial.print("request body:");
+    Serial.println(requestBody);
+    DeserializationError err = deserializeJson(reqDoc, requestBody);
+    if (err)
+    {
+        // デシリアライズ失敗した場合のエラー
+        resDoc["error"] = "failed to deserialize Json";
+        resDoc["error_detail"] = err.c_str();
+        resDoc["success"] = false;
+
+        // JSONをレスポンス
+        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
+        Serial.println(resBodyBuf);
+        server.send(401, "application/json", resBodyBuf);
+
+        // 処理終了のLED表示
+        led.setPixelColor(0, LED_COLOR_BLUE);
+        led.show();
+        return;
+    }
+
+    uint16_t frequency = reqDoc["frequency"] | 38;
+    JsonArray rawArray = reqDoc["data"]["raw"].as<JsonArray>();
+    if (rawArray.isNull() || rawArray.size() == 0)
+    {
+        resDoc["error"] = "data.raw is required.";
+        resDoc["success"] = false;
+
+        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
+        Serial.println(resBodyBuf);
+        server.send(401, "application/json", resBodyBuf);
+
+        led.setPixelColor(0, LED_COLOR_BLUE);
+        led.show();
+        return;
+    }
+
+    uint16_t rawDataLength = rawArray.size();
+    uint16_t *rawData = (uint16_t *)malloc(sizeof(uint16_t) * rawDataLength);
+    if (rawData == NULL)
+    {
+        resDoc["error"] = "failed to allocate raw buffer";
+        resDoc["success"] = false;
+
+        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
+        Serial.println(resBodyBuf);
+        server.send(500, "application/json", resBodyBuf);
+
+        led.setPixelColor(0, LED_COLOR_BLUE);
+        led.show();
+        return;
+    }
+
+    uint16_t index = 0;
+    for (JsonVariant value : rawArray)
+    {
+        if (!value.is<uint16_t>())
+        {
+            free(rawData);
+
+            resDoc["error"] = "data.raw must be an array of uint16 values.";
+            resDoc["success"] = false;
+
+            serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
+            Serial.println(resBodyBuf);
+            server.send(401, "application/json", resBodyBuf);
+
+            led.setPixelColor(0, LED_COLOR_BLUE);
+            led.show();
+            return;
+        }
+
+        rawData[index++] = value.as<uint16_t>();
+    }
+
+    irsend.sendRaw(rawData, rawDataLength, frequency);
+    free(rawData);
+
+    // 成功時の応答のレスポンス
+    resDoc["success"] = true;
+
+    // JSONをレスポンス
+    serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
+    Serial.println(resBodyBuf);
+    server.send(200, "application/json", resBodyBuf);
+
+    // 処理終了
+    led.setPixelColor(0, LED_COLOR_BLUE);
+    led.show();
+}
+
+
 // GET /ir/receive
 void handleIRReceiveAPI()
 {
@@ -381,6 +488,7 @@ void setup()
     // Webサーバの開始
     server.on("/", HTTP_GET, handleRootAPI);
     server.on("/ir/send", HTTP_POST, handleIRSendAPI);
+    server.on("/ir/send_raw", HTTP_POST, handleIRSendRawAPI);
     server.on("/ir/receive", HTTP_GET, handleIRReceiveAPI);
     server.onNotFound(handleNotFoundAPI);
     server.begin();
