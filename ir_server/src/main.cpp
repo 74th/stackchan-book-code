@@ -373,7 +373,7 @@ void handleIRSendRawAPI()
     }
 
     uint16_t frequency = reqDoc["frequency"] | 38;
-    const char *rawHex = reqDoc["data"]["raw"];
+    const char *rawHex = reqDoc["raw"];
     if (rawHex == NULL || strlen(rawHex) == 0)
     {
         resDoc["error"] = "data.raw is required.";
