@@ -85,6 +85,12 @@ unsigned char hexCharToValue(char hexChar)
     }
 }
 
+// 文字が16進数として有効か判定
+bool isHexChar(char hexChar)
+{
+    return ('0' <= hexChar && hexChar <= '9') || ('a' <= hexChar && hexChar <= 'f') || ('A' <= hexChar && hexChar <= 'F');
+}
+
 // HEX文字列をバイト列に変換する関数
 void hexStringToByteArray(const char *hexString, unsigned char *byteArray, size_t *byteArraySize)
 {
@@ -100,6 +106,78 @@ void hexStringToByteArray(const char *hexString, unsigned char *byteArray, size_
     {
         byteArray[i] = (hexCharToValue(hexString[2 * i]) << 4) | hexCharToValue(hexString[2 * i + 1]);
     }
+}
+
+// uint16_t配列をHEX文字列に変換する関数
+String uint16ArrayToHexString(const uint16_t *values, size_t valuesLength)
+{
+    String hexString = "0x";
+    hexString.reserve(2 + valuesLength * 4);
+
+    char buf[5];
+    for (size_t i = 0; i < valuesLength; ++i)
+    {
+        snprintf(buf, sizeof(buf), "%04X", values[i]);
+        hexString += buf;
+    }
+
+    return hexString;
+}
+
+// HEX文字列のuint16_t要素数を取得する関数
+bool getUint16ArrayLengthFromHexString(const char *hexString, size_t *valuesLength)
+{
+    if (hexString == NULL)
+    {
+        return false;
+    }
+
+    if (hexString[0] == '0' && (hexString[1] == 'x' || hexString[1] == 'X'))
+    {
+        hexString += 2;
+    }
+
+    size_t hexLen = strlen(hexString);
+    if (hexLen == 0 || hexLen % 4 != 0)
+    {
+        return false;
+    }
+
+    for (size_t i = 0; i < hexLen; ++i)
+    {
+        if (!isHexChar(hexString[i]))
+        {
+            return false;
+        }
+    }
+
+    *valuesLength = hexLen / 4;
+    return true;
+}
+
+// HEX文字列をuint16_t配列に変換する関数
+bool hexStringToUint16Array(const char *hexString, uint16_t *values, size_t valuesLength)
+{
+    size_t parsedLength;
+    if (!getUint16ArrayLengthFromHexString(hexString, &parsedLength) || parsedLength != valuesLength)
+    {
+        return false;
+    }
+
+    if (hexString[0] == '0' && (hexString[1] == 'x' || hexString[1] == 'X'))
+    {
+        hexString += 2;
+    }
+
+    for (size_t i = 0; i < valuesLength; ++i)
+    {
+        values[i] = (hexCharToValue(hexString[i * 4]) << 12) |
+                    (hexCharToValue(hexString[i * 4 + 1]) << 8) |
+                    (hexCharToValue(hexString[i * 4 + 2]) << 4) |
+                    hexCharToValue(hexString[i * 4 + 3]);
+    }
+
+    return true;
 }
 
 // GET /
@@ -295,8 +373,8 @@ void handleIRSendRawAPI()
     }
 
     uint16_t frequency = reqDoc["frequency"] | 38;
-    JsonArray rawArray = reqDoc["data"]["raw"].as<JsonArray>();
-    if (rawArray.isNull() || rawArray.size() == 0)
+    const char *rawHex = reqDoc["data"]["raw"];
+    if (rawHex == NULL || strlen(rawHex) == 0)
     {
         resDoc["error"] = "data.raw is required.";
         resDoc["success"] = false;
@@ -310,7 +388,21 @@ void handleIRSendRawAPI()
         return;
     }
 
-    uint16_t rawDataLength = rawArray.size();
+    size_t rawDataLength;
+    if (!getUint16ArrayLengthFromHexString(rawHex, &rawDataLength))
+    {
+        resDoc["error"] = "data.raw must be a hex string of uint16 values.";
+        resDoc["success"] = false;
+
+        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
+        Serial.println(resBodyBuf);
+        server.send(401, "application/json", resBodyBuf);
+
+        led.setPixelColor(0, LED_COLOR_BLUE);
+        led.show();
+        return;
+    }
+
     uint16_t *rawData = (uint16_t *)malloc(sizeof(uint16_t) * rawDataLength);
     if (rawData == NULL)
     {
@@ -326,26 +418,20 @@ void handleIRSendRawAPI()
         return;
     }
 
-    uint16_t index = 0;
-    for (JsonVariant value : rawArray)
+    if (!hexStringToUint16Array(rawHex, rawData, rawDataLength))
     {
-        if (!value.is<uint16_t>())
-        {
-            free(rawData);
+        free(rawData);
 
-            resDoc["error"] = "data.raw must be an array of uint16 values.";
-            resDoc["success"] = false;
+        resDoc["error"] = "failed to parse data.raw.";
+        resDoc["success"] = false;
 
-            serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-            Serial.println(resBodyBuf);
-            server.send(401, "application/json", resBodyBuf);
+        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
+        Serial.println(resBodyBuf);
+        server.send(401, "application/json", resBodyBuf);
 
-            led.setPixelColor(0, LED_COLOR_BLUE);
-            led.show();
-            return;
-        }
-
-        rawData[index++] = value.as<uint16_t>();
+        led.setPixelColor(0, LED_COLOR_BLUE);
+        led.show();
+        return;
     }
 
     irsend.sendRaw(rawData, rawDataLength, frequency);
@@ -430,11 +516,7 @@ void handleIRReceiveAPI()
         // 受信、デコード結果をJSON形式でレスポンス
         resDoc["data"]["type"] = typeToString(results.decode_type, results.repeat);
         resDoc["data"]["hex"] = resultToHexidecimal(&results);
-        JsonArray rawArray = resDoc["data"]["raw"].to<JsonArray>();
-        for (uint16_t i = 0; i < len; i++)
-        {
-            rawArray.add(raw[i]);
-        }
+        resDoc["data"]["raw"] = uint16ArrayToHexString(raw, len);
         resDoc["success"] = true;
 
         // JSONをレスポンス
