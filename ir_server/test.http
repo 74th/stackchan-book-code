@@ -1,0 +1,10 @@
+###
+GET http://192.168.1.120/ir/receive
+
+###
+POST http://192.168.1.120/ir/send
+
+{
+  "type": "SONY",
+  "hex": "0xAF0"
+}
