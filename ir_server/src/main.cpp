@@ -12,12 +12,12 @@
 
 #ifdef ARDUINO_M5STACK_ATOM_LITE
 
-#define LED_PIN GPIO_NUM_27         // LEDピン
+#define LED_PIN GPIO_NUM_27 // LEDピン
 
 #ifdef USE_UNIT_IR
-#define IR_SEND_PIN GPIO_NUM_26     // M5 IR赤外線送信ピン(Grove D2)
+#define IR_SEND_PIN GPIO_NUM_26 // M5 IR赤外線送信ピン(Grove D2)
 #else
-#define IR_SEND_PIN GPIO_NUM_12     // ATOM Liteの赤外線送信ピン
+#define IR_SEND_PIN GPIO_NUM_12 // ATOM Liteの赤外線送信ピン
 #endif
 #define IR_RECEIVER_PIN GPIO_NUM_32 // 赤外線受信ピン
 
@@ -33,6 +33,14 @@
 #define LED_COLOR_GREEN Adafruit_NeoPixel::Color(0, 32, 0)
 #define LED_COLOR_BLUE Adafruit_NeoPixel::Color(0, 0, 32)
 #define LED_COLOR_YELLOW Adafruit_NeoPixel::Color(32, 32, 0)
+#define LED_COLOR_RED Adafruit_NeoPixel::Color(32, 0, 0)
+
+// 受信設定（エアコン向けに大きめ）
+static const uint16_t kCaptureBufferSize = 1536;
+static const uint8_t kReceiveTimeoutMs = 70;
+static const uint16_t kMinUnknownSize = 6;
+static const uint16_t kDefaultFrequencyKHz = 38;
+static const uint32_t kReceiveApiTimeoutMs = 10000;
 
 // LEDの定義（数、制御ピン、仕様）
 Adafruit_NeoPixel led(1, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -40,14 +48,13 @@ Adafruit_NeoPixel led(1, LED_PIN, NEO_GRB + NEO_KHZ800);
 // SSID、パスワードの文字列化
 const char *ssid = WIFI_SSID_H;
 const char *pass = WIFI_PASSWORD_H;
-;
 
 // 赤外線送信用オブジェクト
 IRsend irsend(IR_SEND_PIN);
 
 // 赤外線受信オブジェクト
 // 引数: ピン番号、バッファサイズ、タイムアウト(ms)、デコード時に二次バッファを使うか
-IRrecv irrecv(IR_RECEIVER_PIN, 1024, 50, true);
+IRrecv irrecv(IR_RECEIVER_PIN, kCaptureBufferSize, kReceiveTimeoutMs, true);
 
 WebServer server(80);
 
@@ -180,6 +187,29 @@ bool hexStringToUint16Array(const char *hexString, uint16_t *values, size_t valu
     return true;
 }
 
+uint16_t getFrequencyKHzOrDefault(const JsonDocument &doc)
+{
+    if (!doc["frequency"].isNull())
+    {
+        return doc["frequency"].as<uint16_t>();
+    }
+    return kDefaultFrequencyKHz;
+}
+
+void sendJsonResponse(int statusCode, JsonDocument &doc)
+{
+    String body;
+    serializeJson(doc, body);
+    Serial.println(body);
+    server.send(statusCode, "application/json", body);
+}
+
+void setIdleLed()
+{
+    led.setPixelColor(0, LED_COLOR_BLUE);
+    led.show();
+}
+
 // GET /
 void handleRootAPI()
 {
@@ -202,9 +232,8 @@ void handleIRSendAPI()
     led.setPixelColor(0, LED_COLOR_YELLOW);
     led.show();
 
-    JsonDocument resDoc;       // レスポンスのJSON
-    JsonDocument reqDoc;       // リクエストのJSON
-    char resBodyBuf[1024 * 2]; // レスポンスのバッファ
+    JsonDocument resDoc; // レスポンスのJSON
+    JsonDocument reqDoc; // リクエストのJSON
 
     // リクエストボディのJSONデシリアライズ
     String requestBody = server.arg("plain");
@@ -213,75 +242,45 @@ void handleIRSendAPI()
     DeserializationError err = deserializeJson(reqDoc, requestBody);
     if (err)
     {
-        // デシリアライズ失敗した場合のエラー
         resDoc["error"] = "failed to deserialize Json";
         resDoc["error_detail"] = err.c_str();
         resDoc["success"] = false;
-
-        // JSONをレスポンス
-        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-        Serial.println(resBodyBuf);
-        server.send(401, "application/json", resBodyBuf);
-
-        // 処理終了のLED表示
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
+        sendJsonResponse(401, resDoc);
+        setIdleLed();
         return;
     }
 
-    // 信号のタイプのプロパティを取得
     const char *type = reqDoc["type"];
     if (type == NULL || strlen(type) == 0)
     {
-        // プロパティがないエラー
         resDoc["error"] = "type is required.";
         resDoc["success"] = false;
-
-        // JSONをレスポンス
-        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-        Serial.println(resBodyBuf);
-        server.send(401, "application/json", resBodyBuf);
-
-        // 処理終了のLED表示
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
+        sendJsonResponse(401, resDoc);
+        setIdleLed();
         return;
     }
 
-    // 信号データのプロパティを取得
     const char *hexData = reqDoc["hex"];
     if (hexData == NULL || strlen(hexData) == 0)
     {
-        // 取得できない場合エラーを返す
-        String errorMessage = "hex is required.";
-        resDoc["error"] = errorMessage;
+        resDoc["error"] = "hex is required.";
         resDoc["success"] = false;
-        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-        Serial.println(errorMessage);
-        server.send(401, "application/json", resBodyBuf);
-
-        // 処理終了のLED表示
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
+        sendJsonResponse(401, resDoc);
+        setIdleLed();
         return;
     }
 
-    // タイプごとに送信
     if (strcmp(type, "SONY") == 0)
     {
-        // SONY TV
-
-        // hexテキストをuint64_tにパース
         uint64_t data_u64 = hexStringToUint64(hexData);
-        Serial.printf("data: %x\r\n", data_u64);
+        Serial.printf("data: %llx\r\n", data_u64);
 
-        // データ長を特定（SONYは、12、15、20ビットの3種類）
         int16_t dataSize_bits;
-        if (data_u64 <= 1 << 12)
+        if (data_u64 <= (1ULL << 12))
         {
             dataSize_bits = 12;
         }
-        else if (data_u64 <= 1 << 15)
+        else if (data_u64 <= (1ULL << 15))
         {
             dataSize_bits = 15;
         }
@@ -290,50 +289,28 @@ void handleIRSendAPI()
             dataSize_bits = 20;
         }
 
-        // 送信
         irsend.sendSony(data_u64, dataSize_bits, 2);
     }
     else if (strcmp(type, "MITSUBISHI_AC") == 0)
     {
-        // 三菱エアコン
         unsigned char data_bytes[64];
         size_t dataSize_bytes;
 
-        // hexデータ
         hexStringToByteArray(hexData, data_bytes, &dataSize_bytes);
-        Serial.printf("data: %llx\r\n", data_bytes);
-
-        // 送信
         irsend.sendMitsubishiAC(data_bytes, dataSize_bytes);
     }
     else
     {
-        // 不明なタイプのエラーレスポンス
         resDoc["error"] = "unknown type";
         resDoc["success"] = false;
-
-        // JSONをレスポンス
-        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-        Serial.println(resBodyBuf);
-        server.send(401, "application/json", resBodyBuf);
-
-        // 処理終了
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
+        sendJsonResponse(401, resDoc);
+        setIdleLed();
         return;
     }
 
-    // 成功時の応答のレスポンス
     resDoc["success"] = true;
-
-    // JSONをレスポンス
-    serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-    Serial.println(resBodyBuf);
-    server.send(200, "application/json", resBodyBuf);
-
-    // 処理終了
-    led.setPixelColor(0, LED_COLOR_BLUE);
-    led.show();
+    sendJsonResponse(200, resDoc);
+    setIdleLed();
 }
 
 // POST /ir/send_raw
@@ -341,65 +318,44 @@ void handleIRSendRawAPI()
 {
     Serial.println("access POST /ir/send_raw");
 
-    // 処理中を色で表示
     led.setPixelColor(0, LED_COLOR_YELLOW);
     led.show();
 
-    JsonDocument resDoc;       // レスポンスのJSON
-    JsonDocument reqDoc;       // リクエストのJSON
-    char resBodyBuf[1024 * 2]; // レスポンスのバッファ
+    JsonDocument resDoc;
+    JsonDocument reqDoc;
 
-    // リクエストボディのJSONデシリアライズ
     String requestBody = server.arg("plain");
     Serial.print("request body:");
     Serial.println(requestBody);
     DeserializationError err = deserializeJson(reqDoc, requestBody);
     if (err)
     {
-        // デシリアライズ失敗した場合のエラー
         resDoc["error"] = "failed to deserialize Json";
         resDoc["error_detail"] = err.c_str();
         resDoc["success"] = false;
-
-        // JSONをレスポンス
-        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-        Serial.println(resBodyBuf);
-        server.send(401, "application/json", resBodyBuf);
-
-        // 処理終了のLED表示
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
+        sendJsonResponse(401, resDoc);
+        setIdleLed();
         return;
     }
 
-    uint16_t frequency = reqDoc["frequency"] | 38;
+    uint16_t frequency = getFrequencyKHzOrDefault(reqDoc);
     const char *rawHex = reqDoc["raw"];
     if (rawHex == NULL || strlen(rawHex) == 0)
     {
-        resDoc["error"] = "data.raw is required.";
+        resDoc["error"] = "raw is required.";
         resDoc["success"] = false;
-
-        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-        Serial.println(resBodyBuf);
-        server.send(401, "application/json", resBodyBuf);
-
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
+        sendJsonResponse(401, resDoc);
+        setIdleLed();
         return;
     }
 
     size_t rawDataLength;
     if (!getUint16ArrayLengthFromHexString(rawHex, &rawDataLength))
     {
-        resDoc["error"] = "data.raw must be a hex string of uint16 values.";
+        resDoc["error"] = "raw must be a hex string of uint16 values.";
         resDoc["success"] = false;
-
-        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-        Serial.println(resBodyBuf);
-        server.send(401, "application/json", resBodyBuf);
-
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
+        sendJsonResponse(401, resDoc);
+        setIdleLed();
         return;
     }
 
@@ -408,80 +364,55 @@ void handleIRSendRawAPI()
     {
         resDoc["error"] = "failed to allocate raw buffer";
         resDoc["success"] = false;
-
-        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-        Serial.println(resBodyBuf);
-        server.send(500, "application/json", resBodyBuf);
-
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
+        sendJsonResponse(500, resDoc);
+        setIdleLed();
         return;
     }
 
     if (!hexStringToUint16Array(rawHex, rawData, rawDataLength))
     {
         free(rawData);
-
-        resDoc["error"] = "failed to parse data.raw.";
+        resDoc["error"] = "failed to parse raw.";
         resDoc["success"] = false;
-
-        serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-        Serial.println(resBodyBuf);
-        server.send(401, "application/json", resBodyBuf);
-
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
+        sendJsonResponse(401, resDoc);
+        setIdleLed();
         return;
     }
 
+    Serial.printf("send raw length=%u frequency=%u\n", (unsigned int)rawDataLength, frequency);
     irsend.sendRaw(rawData, rawDataLength, frequency);
     free(rawData);
 
-    // 成功時の応答のレスポンス
     resDoc["success"] = true;
-
-    // JSONをレスポンス
-    serializeJson(resDoc, resBodyBuf, sizeof(resBodyBuf));
-    Serial.println(resBodyBuf);
-    server.send(200, "application/json", resBodyBuf);
-
-    // 処理終了
-    led.setPixelColor(0, LED_COLOR_BLUE);
-    led.show();
+    resDoc["data"]["frequency"] = frequency;
+    resDoc["data"]["raw_length"] = rawDataLength;
+    sendJsonResponse(200, resDoc);
+    setIdleLed();
 }
-
 
 // GET /ir/receive
 void handleIRReceiveAPI()
 {
     Serial.println("access GET /ir/receive");
 
-    // 処理中を色で表示
     led.setPixelColor(0, LED_COLOR_YELLOW);
     led.show();
 
-    JsonDocument resDoc; // レスポンスのJSON
-    String resBody;      // レスポンスのバッファ
-
+    JsonDocument resDoc;
     uint32_t start_time = millis();
+
     while (true)
     {
-        if (millis() > start_time + 10000)
+        server.handleClient();
+        delay(1);
+
+        if (millis() - start_time > kReceiveApiTimeoutMs)
         {
-            // タイムアウトのエラー
             resDoc["success"] = false;
             resDoc["error"] = "timeout";
-
-            // JSONをレスポンス
-            resBody = "";
-            serializeJson(resDoc, resBody);
-            Serial.println(resBody);
-            server.send(400, "application/json", resBody);
-
-            // 処理終了のLED表示
-            led.setPixelColor(0, LED_COLOR_BLUE);
-            led.show();
-            break;
+            sendJsonResponse(400, resDoc);
+            setIdleLed();
+            return;
         }
 
         // 受信デコード結果
@@ -502,38 +433,32 @@ void handleIRReceiveAPI()
         {
             resDoc["success"] = false;
             resDoc["error"] = "failed to allocate raw buffer";
-
-            resBody = "";
-            serializeJson(resDoc, resBody);
-            Serial.println(resBody);
-            server.send(500, "application/json", resBody);
-
-            led.setPixelColor(0, LED_COLOR_BLUE);
-            led.show();
-            break;
+            irrecv.resume();
+            sendJsonResponse(500, resDoc);
+            setIdleLed();
+            return;
         }
 
-        // 受信、デコード結果をJSON形式でレスポンス
         resDoc["data"]["type"] = typeToString(results.decode_type, results.repeat);
         resDoc["data"]["hex"] = resultToHexidecimal(&results);
         resDoc["data"]["raw"] = uint16ArrayToHexString(raw, len);
+        resDoc["data"]["raw_length"] = len;
+        resDoc["data"]["overflow"] = results.overflow;
+        resDoc["data"]["bits"] = results.bits;
+        resDoc["data"]["value"] = String((unsigned long long)results.value, HEX);
+        resDoc["data"]["address"] = results.address;
+        resDoc["data"]["command"] = results.command;
+        resDoc["data"]["repeat"] = results.repeat;
+        resDoc["data"]["receive_buffer_size"] = kCaptureBufferSize;
+        resDoc["data"]["receive_timeout_ms"] = kReceiveTimeoutMs;
         resDoc["success"] = true;
 
-        // JSONをレスポンス
-        resBody = "";
-        serializeJson(resDoc, resBody);
-        Serial.println(resBody);
-        server.send(200, "application/json", resBody);
+        delete[] raw;
+        irrecv.resume();
 
-        if (raw != NULL)
-        {
-            delete[] raw;
-        }
-
-        // 処理終了のLED表示
-        led.setPixelColor(0, LED_COLOR_BLUE);
-        led.show();
-        break;
+        sendJsonResponse(200, resDoc);
+        setIdleLed();
+        return;
     }
 }
 
@@ -552,9 +477,14 @@ void setup()
     irsend.begin();
 
     // 赤外線受信の初期化
-    irrecv.setUnknownThreshold(12);
+    irrecv.setUnknownThreshold(kMinUnknownSize);
     irrecv.setTolerance(kTolerance);
     irrecv.enableIRIn();
+
+    Serial.printf("IR receiver config: buffer=%u timeout_ms=%u unknown_threshold=%u\n",
+                  kCaptureBufferSize,
+                  kReceiveTimeoutMs,
+                  kMinUnknownSize);
 
     Serial.print("setup wifi.");
     WiFi.begin(ssid, pass);
@@ -575,9 +505,7 @@ void setup()
     server.onNotFound(handleNotFoundAPI);
     server.begin();
 
-    // セットアップ後は青色にする
-    led.setPixelColor(0, LED_COLOR_BLUE);
-    led.show();
+    setIdleLed();
 }
 
 // 最後のモニター出力
