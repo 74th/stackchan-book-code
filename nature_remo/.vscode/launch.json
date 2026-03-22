@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "control_aircon.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/control_aircon.py",
+            "console": "integratedTerminal"
+        }
+    ],
+    "compounds": []
+}
