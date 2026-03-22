@@ -15,17 +15,23 @@
 #define LED_PIN GPIO_NUM_27 // LEDピン
 
 #ifdef USE_UNIT_IR
-#define IR_SEND_PIN GPIO_NUM_26 // M5 IR赤外線送信ピン(Grove D2)
+#define IR_SEND_PIN GPIO_NUM_26 // Port.A D1
 #else
 #define IR_SEND_PIN GPIO_NUM_12 // ATOM Liteの赤外線送信ピン
 #endif
-#define IR_RECEIVER_PIN GPIO_NUM_32 // 赤外線受信ピン
+#define IR_RECEIVER_PIN GPIO_NUM_32 // Port.A D0
 
 #elif defined(IOT_SERVER_BOARD)
 
 #define LED_PIN GPIO_NUM_2         // LEDピン
-#define IR_SEND_PIN GPIO_NUM_5     // M5 IR赤外線送信ピン(Grove D2)
-#define IR_RECEIVER_PIN GPIO_NUM_4 // 赤外線受信ピン
+#define IR_SEND_PIN GPIO_NUM_5     // GPIO D1
+#define IR_RECEIVER_PIN GPIO_NUM_4 // GPIO D0
+
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+
+#define LED_PIN GPIO_NUM_2 // LEDピン
+#define IR_SEND_PIN GPIO_NUM_1 // Port.A D1
+#define IR_RECEIVER_PIN GPIO_NUM_0 // Port.A D0
 
 #endif
 
@@ -36,9 +42,9 @@
 #define LED_COLOR_RED Adafruit_NeoPixel::Color(32, 0, 0)
 
 // 受信設定（エアコン向けに大きめ）
-static const uint16_t kCaptureBufferSize = 1536;
-static const uint8_t kReceiveTimeoutMs = 70;
-static const uint16_t kMinUnknownSize = 6;
+static const uint16_t kCaptureBufferSize = 1024;
+static const uint8_t kReceiveTimeoutMs = 50;
+static const uint16_t kMinUnknownSize = 12;
 static const uint16_t kDefaultFrequencyKHz = 38;
 static const uint32_t kReceiveApiTimeoutMs = 10000;
 
