@@ -71,7 +71,7 @@ async def aircon_remote(dict_args: dict[str, Any]):
 
     async with aiohttp.ClientSession() as session:
         headers = {"Authorization": f"Bearer {NATURE_REMO_CLOUD_API_TOKEN}"}
-        async with session.post(f"https://api.nature.global/1/appliances/{appliance_id}/aircon_settings", headers=headers, data=payload) as response:
+        async with session.post(f"https://api.nature.global/2/appliances/{appliance_id}/aircon_settings", headers=headers, data=payload) as response:
             if  response.status != 200:
                 response_text = await response.text()
                 raise Exception(f"API request failed with status code {response.status}, response: {response_text}")
