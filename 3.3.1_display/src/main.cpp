@@ -23,7 +23,8 @@ void mode1_string() {
     static int32_t dx = 4;
     static int32_t dy = 4;
 
-    int32_t textWidth = 16 * 3 * 2;
+    int32_t fontSize = 16 * 2;
+    int32_t textWidth = fontSize * 3;
     x += dx;
     y += dy;
 
@@ -40,18 +41,23 @@ void mode1_string() {
     if(y < 0){
         y = 0;
         dy = 4;
-    }else if(y + 16 * 2 > M5.Display.height()){
-        y = M5.Display.height() - 16 * 2;
+    }else if(y + fontSize > M5.Display.height()){
+        y = M5.Display.height() - fontSize;
         dy = -4;
     }
 
     log_i("x: %d, y: %d", x, y);
     M5.Display.fillScreen(TFT_BLACK);
 
+    // カーソルの位置を指定（左上が(0, 0)）
     M5.Display.setCursor(x, y);
+    // フォントを指定
     M5.Display.setTextFont(&fonts::lgfxJapanGothic_16);
+    // フォントサイズを指定（フォントに対して倍率を指定）
     M5.Display.setTextSize(2);
+    // 文字描画の背景色、文字色を指定
     M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+    // 文字を描画
     M5.Display.printf("日本語");
 
     describe_btna_info();
@@ -67,6 +73,7 @@ void mode2_draw_face() {
     uint32_t mouth_y = 157;
     uint32_t mouth_width = 85;
     uint32_t mouth_height = 4;
+
     // 目を円で描画
     M5.Display.fillCircle(160 - between_eyes / 2, eye_y, eye_size, TFT_WHITE);
     M5.Display.fillCircle(160 + between_eyes / 2, eye_y, eye_size, TFT_WHITE);
@@ -75,6 +82,10 @@ void mode2_draw_face() {
                         TFT_WHITE);
 
     describe_btna_info();
+}
+
+void mode3_draw_png() {
+
 }
 
 void loop()
