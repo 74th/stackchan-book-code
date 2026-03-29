@@ -1,3 +1,4 @@
+#include <SPIFFS.h>
 #include <M5Unified.h>
 
 constexpr int kScreenWidth = 320;
@@ -9,16 +10,19 @@ LGFX_Sprite hud(&M5.Display);
 extern const uint8_t _binary_data_74th_64x64_png_start[];
 extern const uint8_t _binary_data_74th_64x64_png_end[];
 
-void append_btna_info_to_hud() {
+void append_btna_info_to_hud()
+{
     // ボタンAの位置
-    hud.setCursor(0, 240-16);
+    hud.setCursor(0, 240 - 16);
     hud.setTextFont(&fonts::lgfxJapanGothic_16);
     hud.setTextSize(1);
     hud.setTextColor(TFT_BLACK, TFT_BLUE);
     hud.printf("ボタンA: 切替");
 }
 
-void mode1_string() {
+// 日本語テキストを描画する
+void mode1_string()
+{
     static int32_t x = 0;
     static int32_t y = 0;
     static int32_t dx = 4;
@@ -29,7 +33,8 @@ void mode1_string() {
     x += dx;
     y += dy;
 
-    if(x < 0){
+    if (x < 0)
+    {
         x = 0;
         dx = 4;
     }
@@ -39,10 +44,13 @@ void mode1_string() {
         dx = -4;
     }
 
-    if(y < 0){
+    if (y < 0)
+    {
         y = 0;
         dy = 4;
-    }else if(y + fontSize > kScreenHeight){
+    }
+    else if (y + fontSize > kScreenHeight)
+    {
         y = kScreenHeight - fontSize;
         dy = -4;
     }
@@ -65,7 +73,9 @@ void mode1_string() {
     hud.pushSprite(0, 0);
 }
 
-void mode2_draw_face() {
+// 図形を描画する
+void mode2_draw_face()
+{
     // 黒で塗りつぶし
     hud.fillScreen(TFT_BLACK);
 
@@ -81,13 +91,15 @@ void mode2_draw_face() {
     hud.fillCircle(kScreenWidth / 2 + between_eyes / 2, eye_y, eye_size, TFT_WHITE);
     // 口を四角で描画
     hud.fillRect(kScreenWidth / 2 - mouth_width / 2, mouth_y, mouth_width, mouth_height,
-                        TFT_WHITE);
+                 TFT_WHITE);
 
     append_btna_info_to_hud();
     hud.pushSprite(0, 0);
 }
 
-void mode3_draw_png() {
+// ファームウェア埋め込みのPNG画像を描画する
+void mode3_draw_png()
+{
     constexpr int kPngWidth = 64;
     constexpr int kPngHeight = 64;
 
@@ -146,9 +158,74 @@ void mode3_draw_png() {
     hud.pushSprite(0, 0);
 }
 
+// SPIFFSのPNG画像を描画する
+void mode4_draw_spiffs_png()
+{
+    constexpr int kPngWidth = 64;
+    constexpr int kPngHeight = 64;
+
+    static float x = (kScreenWidth - kPngWidth) * 0.5f;
+    static float y = (kScreenHeight - kPngHeight) * 0.5f;
+    static float dx = 1.0f;
+    static float dy = 1.0f;
+    static uint32_t last_update_ms = 0;
+
+    constexpr float kSpeedX = 80.0f; // pixels per second
+    constexpr float kSpeedY = 60.0f; // pixels per second
+    const uint32_t now_ms = millis();
+    const float delta = (last_update_ms == 0) ? 0.0f : static_cast<float>(now_ms - last_update_ms) / 1000.0f;
+    last_update_ms = now_ms;
+
+    x += dx * kSpeedX * delta;
+    y += dy * kSpeedY * delta;
+
+    if (x <= 0.0f)
+    {
+        x = 0.0f;
+        dx = 1.0f;
+    }
+    else if (x >= kScreenWidth - kPngWidth)
+    {
+        x = static_cast<float>(kScreenWidth - kPngWidth);
+        dx = -1.0f;
+    }
+
+    if (y <= 0.0f)
+    {
+        y = 0.0f;
+        dy = 1.0f;
+    }
+    else if (y >= kScreenHeight - kPngHeight)
+    {
+        y = static_cast<float>(kScreenHeight - kPngHeight);
+        dy = -1.0f;
+    }
+
+    hud.fillScreen(TFT_BLACK);
+
+    // PNG画像の描画
+    // 引数1: PNGファイルのバイナリの開始位置のポインタ
+    // 引数2: PNGファイルのバイナリのサイズ
+    // 引数3: 描画するx座標
+    // 引数4: 描画するy座標
+    hud.drawPngFile(SPIFFS, "/74th_64x64.png", static_cast<int>(x),
+                    static_cast<int>(y));
+
+    append_btna_info_to_hud();
+    hud.pushSprite(0, 0);
+}
+
 void setup()
 {
     M5.begin();
+
+    // SPIFFSの初期化
+    if (!SPIFFS.begin(true))
+    {
+        M5.Display.println("SPIFFS mount failed");
+        while (1)
+            delay(100);
+    }
 
     hud.setColorDepth(16);
     hud.createSprite(320, 240);
@@ -166,27 +243,35 @@ void loop()
 
     if (M5.BtnA.wasPressed())
     {
-        mode = (mode + 1) % 4;
+        mode = (mode + 1) % 5;
         mode_changed = true;
         log_i("mode: %d", mode);
     }
 
-    if(mode == 0 && mode_changed) {
-        M5.Display.fillScreen(TFT_BLACK);
+    if (mode == 0 && mode_changed)
+    {
+        hud.fillScreen(TFT_BLACK);
 
         append_btna_info_to_hud();
 
         hud.pushSprite(0, 0);
     }
-    if(mode == 1) {
+    if (mode == 1)
+    {
         mode1_string();
 
         delay(10);
     }
-    if(mode == 2 && mode_changed) {
+    if (mode == 2 && mode_changed)
+    {
         mode2_draw_face();
     }
-    if(mode == 3) {
+    if (mode == 3)
+    {
         mode3_draw_png();
+    }
+    if (mode == 4)
+    {
+        mode4_draw_spiffs_png();
     }
 }
