@@ -1,21 +1,22 @@
 #include <M5Unified.h>
 
-void describe_btna_info() {
+constexpr int kScreenWidth = 320;
+constexpr int kScreenHeight = 240;
+
+LGFX_Sprite hud(&M5.Display);
+
+// 埋め込みPNG画像
+extern const uint8_t _binary_data_74th_64x64_png_start[];
+extern const uint8_t _binary_data_74th_64x64_png_end[];
+
+void append_btna_info_to_hud() {
     // ボタンAの位置
-    M5.Display.setCursor(0, 240-16);
-    M5.Display.setTextFont(&fonts::lgfxJapanGothic_16);
-    M5.Display.setTextSize(1);
-    M5.Display.setTextColor(TFT_BLACK, TFT_BLUE);
-    M5.Display.printf("ボタンA: 切替");
+    hud.setCursor(0, 240-16);
+    hud.setTextFont(&fonts::lgfxJapanGothic_16);
+    hud.setTextSize(1);
+    hud.setTextColor(TFT_BLACK, TFT_BLUE);
+    hud.printf("ボタンA: 切替");
 }
-
-void setup()
-{
-    M5.begin();
-
-    describe_btna_info();
-}
-
 
 void mode1_string() {
     static int32_t x = 0;
@@ -32,40 +33,41 @@ void mode1_string() {
         x = 0;
         dx = 4;
     }
-    else if (x + textWidth > M5.Display.width())
+    else if (x + textWidth > kScreenWidth)
     {
-        x = M5.Display.width() - textWidth;
+        x = kScreenWidth - textWidth;
         dx = -4;
     }
 
     if(y < 0){
         y = 0;
         dy = 4;
-    }else if(y + fontSize > M5.Display.height()){
-        y = M5.Display.height() - fontSize;
+    }else if(y + fontSize > kScreenHeight){
+        y = kScreenHeight - fontSize;
         dy = -4;
     }
 
     log_i("x: %d, y: %d", x, y);
-    M5.Display.fillScreen(TFT_BLACK);
+    hud.fillScreen(TFT_BLACK);
 
     // カーソルの位置を指定（左上が(0, 0)）
-    M5.Display.setCursor(x, y);
+    hud.setCursor(x, y);
     // フォントを指定
-    M5.Display.setTextFont(&fonts::lgfxJapanGothic_16);
+    hud.setTextFont(&fonts::lgfxJapanGothic_16);
     // フォントサイズを指定（フォントに対して倍率を指定）
-    M5.Display.setTextSize(2);
+    hud.setTextSize(2);
     // 文字描画の背景色、文字色を指定
-    M5.Display.setTextColor(TFT_BLACK, TFT_WHITE);
+    hud.setTextColor(TFT_BLACK, TFT_WHITE);
     // 文字を描画
-    M5.Display.printf("日本語");
+    hud.printf("日本語");
 
-    describe_btna_info();
+    append_btna_info_to_hud();
+    hud.pushSprite(0, 0);
 }
 
 void mode2_draw_face() {
     // 黒で塗りつぶし
-    M5.Display.fillScreen(TFT_BLACK);
+    hud.fillScreen(TFT_BLACK);
 
     uint32_t eye_y = 102;
     uint32_t between_eyes = 135;
@@ -75,17 +77,84 @@ void mode2_draw_face() {
     uint32_t mouth_height = 4;
 
     // 目を円で描画
-    M5.Display.fillCircle(160 - between_eyes / 2, eye_y, eye_size, TFT_WHITE);
-    M5.Display.fillCircle(160 + between_eyes / 2, eye_y, eye_size, TFT_WHITE);
+    hud.fillCircle(kScreenWidth / 2 - between_eyes / 2, eye_y, eye_size, TFT_WHITE);
+    hud.fillCircle(kScreenWidth / 2 + between_eyes / 2, eye_y, eye_size, TFT_WHITE);
     // 口を四角で描画
-    M5.Display.fillRect(160 - mouth_width / 2, mouth_y, mouth_width, mouth_height,
+    hud.fillRect(kScreenWidth / 2 - mouth_width / 2, mouth_y, mouth_width, mouth_height,
                         TFT_WHITE);
 
-    describe_btna_info();
+    append_btna_info_to_hud();
+    hud.pushSprite(0, 0);
 }
 
 void mode3_draw_png() {
+    constexpr int kPngWidth = 64;
+    constexpr int kPngHeight = 64;
 
+    static float x = (kScreenWidth - kPngWidth) * 0.5f;
+    static float y = (kScreenHeight - kPngHeight) * 0.5f;
+    static float dx = 1.0f;
+    static float dy = 1.0f;
+    static uint32_t last_update_ms = 0;
+
+    constexpr float kSpeedX = 80.0f; // pixels per second
+    constexpr float kSpeedY = 60.0f; // pixels per second
+    const uint32_t now_ms = millis();
+    const float delta = (last_update_ms == 0) ? 0.0f : static_cast<float>(now_ms - last_update_ms) / 1000.0f;
+    last_update_ms = now_ms;
+
+    x += dx * kSpeedX * delta;
+    y += dy * kSpeedY * delta;
+
+    if (x <= 0.0f)
+    {
+        x = 0.0f;
+        dx = 1.0f;
+    }
+    else if (x >= kScreenWidth - kPngWidth)
+    {
+        x = static_cast<float>(kScreenWidth - kPngWidth);
+        dx = -1.0f;
+    }
+
+    if (y <= 0.0f)
+    {
+        y = 0.0f;
+        dy = 1.0f;
+    }
+    else if (y >= kScreenHeight - kPngHeight)
+    {
+        y = static_cast<float>(kScreenHeight - kPngHeight);
+        dy = -1.0f;
+    }
+
+    hud.fillScreen(TFT_BLACK);
+
+    // ポインタからファイルサイズを計算
+    const uint8_t *png_start = _binary_data_74th_64x64_png_start;
+    const uint8_t *png_end = _binary_data_74th_64x64_png_end;
+    const uint32_t png_size = static_cast<uint32_t>(png_end - png_start);
+
+    // PNG画像の描画
+    // 引数1: PNGファイルのバイナリの開始位置のポインタ
+    // 引数2: PNGファイルのバイナリのサイズ
+    // 引数3: 描画するx座標
+    // 引数4: 描画するy座標
+    hud.drawPng(png_start, png_size, static_cast<int>(x), static_cast<int>(y));
+
+    append_btna_info_to_hud();
+    hud.pushSprite(0, 0);
+}
+
+void setup()
+{
+    M5.begin();
+
+    hud.setColorDepth(16);
+    hud.createSprite(320, 240);
+
+    append_btna_info_to_hud();
+    hud.pushSprite(0, 0);
 }
 
 void loop()
@@ -105,18 +174,19 @@ void loop()
     if(mode == 0 && mode_changed) {
         M5.Display.fillScreen(TFT_BLACK);
 
-        describe_btna_info();
+        append_btna_info_to_hud();
+
+        hud.pushSprite(0, 0);
     }
     if(mode == 1) {
         mode1_string();
-
-        describe_btna_info();
 
         delay(10);
     }
     if(mode == 2 && mode_changed) {
         mode2_draw_face();
-
-        describe_btna_info();
+    }
+    if(mode == 3) {
+        mode3_draw_png();
     }
 }
