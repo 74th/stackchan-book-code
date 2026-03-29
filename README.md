@@ -10,6 +10,10 @@
 
 [./links.md](./links.md)
 
+## 正誤表
+
+[./errata.md](./errata.md)
+
 ## LICENSE
 
 本リポジトリのコードはCC0 1.0 Universal (CC0 1.0) Public Domain Dedicationのもとで提供されます。
