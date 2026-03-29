@@ -39,6 +39,12 @@ struct __attribute__((packed)) WsHeader
     uint16_t payloadBytes; // ヘッダーに続くバイト数
 };
 
+struct __attribute__((packed)) StateCmdPacket
+{
+    WsHeader header;
+    uint8_t state;
+};
+
 void handleWsEvent(WStype_t type, uint8_t *payload, size_t length)
 {
     switch (type)
@@ -144,15 +150,25 @@ void setup()
 void loop()
 {
     M5.update();
+    wsClient.loop();
 
-    if (wsClient.isConnected())
-    {
-        log_i("WebSocket is connected");
-    }
-    else
-    {
-        log_i("WebSocket is not connected");
-    }
+    uint8_t nextState = 0;
 
-    delay(500);
+    if (M5.BtnA.wasPressed())
+    {
+        // ボタンAが押されたときにサーバにメッセージを送る
+        log_i("Button A Pressed!");
+        StateCmdPacket tx{};
+        tx.header.kind = static_cast<uint8_t>(MessageKind::StateCmd);
+        tx.header.messageType = static_cast<uint8_t>(MessageType::DATA);
+        tx.header.reserved = 0;
+        tx.header.seq = 0;
+        tx.header.payloadBytes = sizeof(tx.state);
+        tx.state = nextState;
+
+        bool ok = wsClient.sendBIN(reinterpret_cast<uint8_t *>(&tx), sizeof(tx));
+        log_i("Send StateCmd: state=%u seq=%u result=%s", (unsigned)nextState, (unsigned)tx.header.seq, ok ? "ok" : "ng");
+
+        nextState = (nextState + 1) % 5;
+    }
 }
