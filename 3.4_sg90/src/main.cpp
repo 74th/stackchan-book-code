@@ -13,8 +13,8 @@
 // static const int SERVO2_PIN = 17;
 
 // CoreS3 with m5-pantilt
-const int SERVO1_PIN = 6;
-const int SERVO2_PIN = 7;
+const int SERVO1_PIN = 6; // V 上下
+const int SERVO2_PIN = 7; // H 足
 
 static ServoEasing Servo1;
 static ServoEasing Servo2;
