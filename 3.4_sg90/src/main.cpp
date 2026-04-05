@@ -8,13 +8,13 @@
 // static const int SERVO1_PIN = 1;
 // static const int SERVO2_PIN = 2;
 
-// CoreS3 Port B
-static const int SERVO1_PIN = 18;
-static const int SERVO2_PIN = 17;
+// CoreS3 Port C
+// static const int SERVO1_PIN = 18;
+// static const int SERVO2_PIN = 17;
 
 // CoreS3 with m5-pantilt
-// const int SERVO1_PIN = 6;
-// const int SERVO2_PIN = 7;
+const int SERVO1_PIN = 6;
+const int SERVO2_PIN = 7;
 
 static ServoEasing Servo1;
 static ServoEasing Servo2;
@@ -44,27 +44,12 @@ void loop()
     // Servo1.startEaseTo(110, 30);
 
     // 左向く
-    Servo1.startEaseTo(110, 30);
+    Servo2.startEaseTo(110, 30);
 
     delay(1000);
 
     // 右向く
-    Servo1.startEaseTo(70, 60);
-
-    delay(1000);
-
-    // 正面
-    Servo1.startEaseTo(90, 30);
-
-    delay(3000);
-
-    // 下向く
-    Servo2.startEaseTo(100, 30);
-
-    delay(1000);
-
-    // 上向く
-    Servo2.startEaseTo(80, 60);
+    Servo2.startEaseTo(70, 60);
 
     delay(1000);
 
@@ -73,17 +58,32 @@ void loop()
 
     delay(3000);
 
+    // 下向く
+    Servo1.startEaseTo(100, 30);
+
+    delay(1000);
+
+    // 上向く
+    Servo1.startEaseTo(80, 60);
+
+    delay(1000);
+
+    // 正面
+    Servo1.startEaseTo(90, 30);
+
+    delay(3000);
+
     // 傾聴
-    Servo2.startEaseTo(80, 100);
+    Servo1.startEaseTo(80, 100);
     delay(2000);
     // 頷く
-    Servo2.startEaseTo(100, 100);
+    Servo1.startEaseTo(100, 100);
     delay(300);
-    Servo2.startEaseTo(90, 100);
+    Servo1.startEaseTo(90, 100);
     delay(300);
-    Servo2.startEaseTo(100, 100);
+    Servo1.startEaseTo(100, 100);
     delay(300);
-    Servo2.startEaseTo(90, 100);
+    Servo1.startEaseTo(90, 100);
 
     delay(3000);
 }
